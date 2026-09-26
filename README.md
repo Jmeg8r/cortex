@@ -146,20 +146,21 @@ from cortex import search_similar, hybrid_search
 similar = search_similar(conn, query_embedding, limit=5)
 
 # Hybrid search (FTS5 + vector with RRF fusion)
-results = hybrid_search(conn, "authentication flow", limit=10, alpha=0.5)
+results = hybrid_search(conn, "authentication flow", query_embedding=query_embedding,
+                        limit=10, fts_weight=0.5, vec_weight=0.5)
 ```
 
 ### Hybrid Search
 - **Reciprocal Rank Fusion (RRF)** combines FTS5 + vector rankings
-- **Configurable alpha** blending (0.0 = FTS only, 1.0 = vector only)
-- **Auto-embed** on event append for real-time semantic indexing
+- **Configurable weights** (`fts_weight`, `vec_weight`, RRF `k=60` by default); without a `query_embedding` it falls back to FTS only
+- **Auto-embed** on event append when `auto_embed` is enabled in `~/.cortex/config.json` (off by default)
 
 ### Anticipatory Retrieval
 - **UserPromptSubmit hook** for proactive context injection
 - **Semantic search** against user prompt before Claude responds
 - **Configurable** result limit and similarity threshold
 
-The UserPromptSubmit hook searches the event store for semantically relevant context and injects it into `.claude/rules/cortex-briefing.md` before Claude sees the prompt.
+The UserPromptSubmit hook searches the event store for semantically relevant context and writes it to `.claude/rules/cortex-relevant-context.md` before Claude sees the prompt.
 
 ### Migration CLI (Tier 1 → Tier 2)
 
@@ -210,7 +211,7 @@ Auto-generated markdown files in `.cortex/` for PR context:
 └── active-plan.md        # Current work plan
 ```
 
-- **Regenerated** on session end via Stop hook
+- **Regenerated** on session end when the Stop hook runs as `cortex stop --regenerate-projections`
 - **Git-friendly** — commit to share context with teammates
 - **Merge strategy** — regenerate from event store on conflict
 
@@ -231,6 +232,31 @@ cortex upgrade --dry-run # Preview what would be enabled
 cortex init              # Print updated hooks with MCP config
 ```
 
+## Architecture
+
+```mermaid
+flowchart TD
+    CC["Claude Code"] -->|"hook JSON on stdin"| Hooks["cortex CLI hooks<br/>stop, precompact, session-start, user-prompt-submit"]
+    Hooks -->|"read new transcript lines"| Extract["Three-layer extraction<br/>structural, keyword, MEMORY tags"]
+    Extract --> Store[("Event store<br/>~/.cortex/projects/HASH/<br/>events.json (Tier 0) or events.db (Tier 1+)")]
+    Store --> Brief["Briefing projection<br/>token budget, git-anchored"]
+    Brief -->|"writes"| Rules[".claude/rules/<br/>cortex-briefing.md"]
+    Hooks -->|"user-prompt-submit (Tier 2)"| Anticipate["Anticipatory retrieval"]
+    Anticipate -->|"FTS5 + vector search"| Store
+    Anticipate -->|"writes"| Relevant[".claude/rules/<br/>cortex-relevant-context.md"]
+    CC -->|"stdio (Tier 3)"| MCP["MCP server<br/>cortex_search, cortex_get_plan, ..."]
+    MCP -->|"queries"| Store
+    Store -->|"Tier 3, Stop hook"| Proj[".cortex/ projections<br/>decisions.md, active-plan.md"]
+    Rules -->|"loaded at session start"| CC
+```
+
+Per-project data lives under `~/.cortex/projects/<hash>/` (events plus hook state); user overrides go in
+`~/.cortex/config.json`. Only the `.claude/rules/` files and the optional `.cortex/` projections are
+written into the project itself.
+
+A rendered diagram is in [`docs/diagrams/cortex.architecture.svg`](docs/diagrams/cortex.architecture.svg)
+(source: `docs/diagrams/cortex.architecture.json`).
+
 ## Key Design Decisions
 
 1. **Event sourcing as foundation** — Separates capture from delivery; audit trail is permanent
@@ -245,14 +271,14 @@ cortex init              # Print updated hooks with MCP config
 
 **Research: COMPLETE** | **Tier 0-3: COMPLETE**
 
-- **713 tests** passing with full coverage of core functionality
-- **A/B comparison testing** completed (see [results](docs/testing/AB-COMPARISON-RESULTS.md))
-- Cold start time reduced by **84%** (9.0 min → 1.4 min)
-- Decision regression reduced by **80%** (0.5 → 0.1 per session)
-- Hybrid search improves relevance over FTS5-only
-- Sub-100ms anticipatory retrieval latency
-- Full MCP protocol compliance for mid-session queries
-- Sub-second projection generation
+- **pytest suite** in `tests/` (one test module per source module, plus integration and sandbox tests)
+- **A/B comparison testing** completed (see [results](docs/testing/AB-COMPARISON-RESULTS.md)). The
+  figures below are the author's reported results from that comparison, not something CI re-measures:
+  - Cold start time reduced by **84%** (9.0 min → 1.4 min)
+  - Decision regression reduced by **80%** (0.5 → 0.1 per session)
+  - Hybrid search improves relevance over FTS5-only
+  - Sub-100ms anticipatory retrieval latency
+  - Sub-second projection generation
 
 All tiers implemented. See [releases](https://github.com/As-The-Geek-Learns/cortex/releases) for version history.
 
@@ -296,7 +322,7 @@ This project uses a 4-phase workflow: **PLAN → EXECUTE → VERIFY → SHIP** w
 
 ## Hook setup (Claude Code)
 
-Cortex provides three hook handlers that Claude Code invokes with JSON payloads on stdin. Configure your Claude Code hooks (e.g. in `~/.claude/settings.json` or your project’s Claude Code settings) so that:
+Cortex provides four hook handlers that Claude Code invokes with JSON payloads on stdin. Configure your Claude Code hooks (e.g. in `~/.claude/settings.json` or your project’s Claude Code settings) so that:
 
 | Hook | Command |
 |------|---------|

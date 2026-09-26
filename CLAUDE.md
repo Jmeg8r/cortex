@@ -32,7 +32,7 @@ cortex/
 - Use Python 3.11+ with Ruff for linting and formatting
 - Line length: 120 characters
 - Quote style: double quotes
-- Keep modules focused and under 300 lines
+- Keep modules focused and under 300 lines (a target for new code; several existing modules, e.g. `migration.py` and `sqlite_store.py`, are larger)
 - Extract reusable logic to utilities
 
 ### Naming Conventions

@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "cortex \u2014 event-sourced memory for Claude Code",
+    "output": "cortex.architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "capture",
+        "label": "Capture (Stop / PreCompact)",
+        "focus": [
+          "cc",
+          "hooks",
+          "extract",
+          "store"
+        ],
+        "note": "Hooks read new transcript lines since the last offset, extract events in three layers and append them to the store."
+      },
+      {
+        "id": "deliver",
+        "label": "Briefing delivery",
+        "focus": [
+          "hooks",
+          "store",
+          "briefing",
+          "rules",
+          "anticipate",
+          "search"
+        ],
+        "note": "session-start and precompact write cortex-briefing.md; user-prompt-submit writes cortex-relevant-context.md."
+      },
+      {
+        "id": "tier3",
+        "label": "Tier 3 queries",
+        "focus": [
+          "cc",
+          "mcp",
+          "search",
+          "store",
+          "proj"
+        ],
+        "note": "The stdio MCP server answers mid-session queries; Stop with --regenerate-projections writes .cortex/*.md."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "cc",
+      "type": "external",
+      "label": "Claude Code",
+      "sublabel": "hooks + MCP client",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "hooks",
+      "type": "backend",
+      "label": "cortex hooks",
+      "sublabel": "hooks.py",
+      "pos": [
+        250,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "stdin JSON"
+    },
+    {
+      "id": "extract",
+      "type": "backend",
+      "label": "Extraction",
+      "sublabel": "structural, keyword, tags",
+      "pos": [
+        460,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Event store",
+      "sublabel": "events.json / events.db",
+      "pos": [
+        670,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "~/.cortex"
+    },
+    {
+      "id": "briefing",
+      "type": "backend",
+      "label": "Briefing",
+      "sublabel": "token budget",
+      "pos": [
+        670,
+        80
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "rules",
+      "type": "frontend",
+      "label": ".claude/rules/",
+      "sublabel": "briefing markdown",
+      "pos": [
+        880,
+        80
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "proj",
+      "type": "frontend",
+      "label": ".cortex/",
+      "sublabel": "git-tracked projections",
+      "pos": [
+        880,
+        220
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "Tier 3"
+    },
+    {
+      "id": "anticipate",
+      "type": "backend",
+      "label": "Anticipatory retrieval",
+      "sublabel": "anticipate.py",
+      "pos": [
+        250,
+        360
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "Tier 2"
+    },
+    {
+      "id": "search",
+      "type": "backend",
+      "label": "Search",
+      "sublabel": "FTS5 + vectors, RRF",
+      "pos": [
+        460,
+        360
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP server",
+      "sublabel": "5 tools, 3 resources",
+      "pos": [
+        460,
+        500
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "Tier 3"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "cortex package",
+      "wraps": [
+        "hooks",
+        "extract",
+        "briefing",
+        "anticipate",
+        "search",
+        "mcp"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cc-hooks",
+      "from": "cc",
+      "to": "hooks",
+      "label": "hook",
+      "variant": "emphasis"
+    },
+    {
+      "id": "hooks-extract",
+      "from": "hooks",
+      "to": "extract",
+      "variant": "emphasis"
+    },
+    {
+      "id": "extract-store",
+      "from": "extract",
+      "to": "store",
+      "label": "append",
+      "variant": "emphasis"
+    },
+    {
+      "id": "store-brief",
+      "from": "store",
+      "to": "briefing"
+    },
+    {
+      "id": "brief-rules",
+      "from": "briefing",
+      "to": "rules",
+      "label": "write"
+    },
+    {
+      "id": "store-proj",
+      "from": "store",
+      "to": "proj",
+      "label": "regen",
+      "variant": "dashed"
+    },
+    {
+      "id": "hooks-anticipate",
+      "from": "hooks",
+      "to": "anticipate",
+      "label": "prompt",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "anticipate-search",
+      "from": "anticipate",
+      "to": "search"
+    },
+    {
+      "id": "search-store",
+      "from": "search",
+      "to": "store",
+      "label": "query"
+    },
+    {
+      "id": "cc-mcp",
+      "from": "cc",
+      "to": "mcp",
+      "label": "stdio",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          110,
+          530
+        ]
+      ]
+    },
+    {
+      "id": "mcp-search",
+      "from": "mcp",
+      "to": "search",
+      "label": "query"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Capture",
+      "items": [
+        "Stop and PreCompact read transcript JSONL",
+        "Incremental: offset kept in state.json",
+        "No secondary LLM calls"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Storage tiers",
+      "items": [
+        "Tier 0: events.json",
+        "Tier 1: SQLite (WAL) + FTS5",
+        "cortex upgrade moves up one tier"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Delivery",
+      "items": [
+        "Briefing capped by max_briefing_tokens (3000)",
+        "Written under .claude/rules/",
+        "Never edits the user's CLAUDE.md"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Optional extras",
+      "items": [
+        "tier2 extra: SentenceTransformers embeddings",
+        "tier3 extra: mcp",
+        "Degrades gracefully when missing"
+      ]
+    }
+  ]
+}
